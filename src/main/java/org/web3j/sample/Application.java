@@ -1,15 +1,21 @@
 package org.web3j.sample;
 
 import java.math.BigDecimal;
+import java.math.BigInteger;
 
+import io.reactivex.disposables.Disposable;
+import org.reactivestreams.Subscription;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.web3j.crypto.Credentials;
 import org.web3j.crypto.WalletUtils;
 import org.web3j.protocol.Web3j;
+import org.web3j.protocol.core.Request;
+import org.web3j.protocol.core.methods.response.EthBlock;
 import org.web3j.protocol.core.methods.response.TransactionReceipt;
 import org.web3j.protocol.http.HttpService;
+import org.web3j.protocol.websocket.WebSocketService;
 import org.web3j.sample.contracts.generated.Greeter;
 import org.web3j.tx.Transfer;
 import org.web3j.tx.gas.ContractGasProvider;
@@ -48,7 +54,37 @@ public class Application {
     private static final Logger log = LoggerFactory.getLogger(Application.class);
 
     public static void main(String[] args) throws Exception {
-        new Application().run();
+        try {
+            new Application().subscribePendingTransactions();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void subscribePendingTransactions() throws Exception {
+        String httpUrl = "http://YOUR_URL";
+        String websocketUrl = "http://YOUR_URL";
+        // http example
+        {
+            Web3j web3j = Web3j.build(new HttpService(httpUrl));
+            Request<?, EthBlock> ethBlockRequest = web3j.ethGetBlockByHash("0xc5f06516b81c5a6a7b967b952484266427b1f29882c5f7834235790900f66135", false);
+            EthBlock.Block block = ethBlockRequest.send().getBlock();
+            System.out.println(block);
+            assert block.getNumber().equals(new BigInteger("11526734"));
+        }
+        // websocket example
+        {
+            WebSocketService webSocketService = new WebSocketService(websocketUrl, false);
+            webSocketService.connect();
+            Web3j web3j = Web3j.build(webSocketService);
+            web3j.ethPendingTransactionHashFlowable().subscribe(tx -> {
+                System.out.println(tx);
+            });
+            web3j.pendingTransactionFlowable().subscribe(tx -> {
+                System.out.println("hash=" + tx.getHash() + ", to=" + tx.getTo());
+            });
+            Thread.sleep(100_000);
+        }
     }
 
     private void run() throws Exception {
@@ -87,7 +123,7 @@ public class Application {
                 credentials,
                 contractGasProvider,
                 "test"
-                ).send();
+        ).send();
 
         String contractAddress = contract.getContractAddress();
         log.info("Smart contract deployed to address " + contractAddress);
